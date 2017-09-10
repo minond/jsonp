@@ -25,6 +25,7 @@ func main() {
 	}
 
 	http.HandleFunc("/", proxy)
+	http.HandleFunc("/help", help)
 	http.ListenAndServe(":"+port, nil)
 }
 
@@ -48,6 +49,15 @@ func jsonpReq(r *http.Request) JsonpRequeset {
 	}
 
 	return JsonpRequeset{url, method, contentType, body, callback}
+}
+
+func buffRead(r io.ReadCloser) string {
+	defer r.Close()
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(r)
+
+	return buf.String()
 }
 
 func proxy(w http.ResponseWriter, r *http.Request) {
@@ -86,11 +96,13 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(body))
 }
 
-func buffRead(r io.ReadCloser) string {
-	defer r.Close()
-
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(r)
-
-	return buf.String()
+func help(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(`Parameters
+		- url (string) the url you need to request
+		- method (string) http method to use when making request
+		- contentType (string) type of payload (if 'body' is set)
+		- body (string) payload to send as request body (if 'method' is POST)
+		- callback (string) name of callback function
+	`))
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ type JsonpRequeset struct {
 	method      string
 	contentType string
 	body        string
+	callback    string
 }
 
 func main() {
@@ -31,16 +33,21 @@ func jsonpReq(r *http.Request) JsonpRequeset {
 	method := r.URL.Query().Get("method")
 	contentType := r.URL.Query().Get("contentType")
 	body := r.URL.Query().Get("body")
+	callback := r.URL.Query().Get("callback")
 
 	if contentType == "" {
 		contentType = "application/json"
+	}
+
+	if callback == "" {
+		callback = "callback"
 	}
 
 	if method == "" {
 		method = http.MethodGet
 	}
 
-	return JsonpRequeset{url, method, contentType, body}
+	return JsonpRequeset{url, method, contentType, body, callback}
 }
 
 func proxy(w http.ResponseWriter, r *http.Request) {
@@ -71,15 +78,19 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	json := buffRead(res.Body)
+	body := fmt.Sprintf("%s(%s)", jsonp.callback, json)
+
+	w.Header().Set("Content-Type", "application/javascript")
 	w.WriteHeader(res.StatusCode)
-	w.Write(buffBytes(res.Body))
+	w.Write([]byte(body))
 }
 
-func buffBytes(r io.ReadCloser) []byte {
+func buffRead(r io.ReadCloser) string {
 	defer r.Close()
 
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(r)
 
-	return buf.Bytes()
+	return buf.String()
 }

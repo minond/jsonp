@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -15,8 +16,14 @@ type JsonpRequeset struct {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = "8080"
+	}
+
 	http.HandleFunc("/", proxy)
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":"+port, nil)
 }
 
 func jsonpReq(r *http.Request) JsonpRequeset {
@@ -41,7 +48,6 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 
 	if jsonp.url == "" {
 		http.Error(w, "Missing a `url` query parameter.", http.StatusBadRequest)
-
 		return
 	}
 

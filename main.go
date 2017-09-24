@@ -7,14 +7,20 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
-type JsonpRequeset struct {
+type JsonpRequest struct {
 	url         string
 	method      string
 	contentType string
 	body        string
 	callback    string
+}
+
+type HttpResponse struct {
+	res *http.Response
+	err error
 }
 
 func main() {
@@ -29,7 +35,7 @@ func main() {
 	http.ListenAndServe(":"+port, nil)
 }
 
-func jsonpReq(r *http.Request) JsonpRequeset {
+func jsonpReq(r *http.Request) JsonpRequest {
 	url := r.URL.Query().Get("url")
 	method := r.URL.Query().Get("method")
 	contentType := r.URL.Query().Get("contentType")
@@ -48,7 +54,7 @@ func jsonpReq(r *http.Request) JsonpRequeset {
 		method = http.MethodGet
 	}
 
-	return JsonpRequeset{url, method, contentType, body, callback}
+	return JsonpRequest{url, method, contentType, body, callback}
 }
 
 func buffRead(r io.ReadCloser) string {
@@ -68,32 +74,55 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var res *http.Response
-	var err error
+	ch := make(chan *HttpResponse)
+	start := time.Now()
 
-	switch strings.ToUpper(jsonp.method) {
-	case http.MethodPost:
-		res, err = http.Post(
-			jsonp.url,
-			jsonp.contentType,
-			strings.NewReader(jsonp.body),
-		)
+	go func() {
+		var res *http.Response
+		var err error
 
-	default:
-		res, err = http.Get(jsonp.url)
+		fmt.Printf("Sending a %s request to %s\n", jsonp.method, jsonp.url)
+
+		switch strings.ToUpper(jsonp.method) {
+		case http.MethodPost:
+			res, err = http.Post(
+				jsonp.url,
+				jsonp.contentType,
+				strings.NewReader(jsonp.body),
+			)
+
+		default:
+			res, err = http.Get(jsonp.url)
+		}
+
+		ch <- &HttpResponse{res, err}
+	}()
+
+	for {
+		select {
+		case r := <-ch:
+			secs := time.Since(start).Seconds()
+			fmt.Printf("Got a response back from %s in %.5f seconds\n", jsonp.url, secs)
+
+			if r.err != nil {
+				http.Error(w, "Error making proxy request.", http.StatusInternalServerError)
+				return
+			}
+
+			json := buffRead(r.res.Body)
+			body := fmt.Sprintf("%s(%s)", jsonp.callback, json)
+
+			w.Header().Set("Content-Type", "application/javascript")
+			w.WriteHeader(r.res.StatusCode)
+			w.Write([]byte(body))
+
+			return
+
+		case <-time.After(200 * time.Millisecond):
+			secs := time.Since(start).Seconds()
+			fmt.Printf("Still waiting for %s after %.5f seconds\n", jsonp.url, secs)
+		}
 	}
-
-	if err != nil {
-		http.Error(w, "Error making proxy request.", http.StatusInternalServerError)
-		return
-	}
-
-	json := buffRead(res.Body)
-	body := fmt.Sprintf("%s(%s)", jsonp.callback, json)
-
-	w.Header().Set("Content-Type", "application/javascript")
-	w.WriteHeader(res.StatusCode)
-	w.Write([]byte(body))
 }
 
 func help(w http.ResponseWriter, r *http.Request) {

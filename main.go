@@ -31,6 +31,7 @@ func main() {
 	}
 
 	http.HandleFunc("/", proxy)
+	http.HandleFunc("/ping", ping)
 	http.HandleFunc("/help", help)
 	http.ListenAndServe(":"+port, nil)
 }
@@ -134,4 +135,9 @@ func help(w http.ResponseWriter, r *http.Request) {
 		- body (string) payload to send as request body (if 'method' is POST)
 		- callback (string) name of callback function
 	`))
+}
+
+func ping(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "plain/text")
+	w.Write([]byte("pong"))
 }
